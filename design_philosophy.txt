@@ -1,0 +1,19 @@
+The `object_scores` package aims to standardise, compute, visualise and compare object-cell classification methods.
+
+To ensure the methods can be debugged and understood, and that new methods can be added by anyone, we aim to keep the codebase as simple and explicit as possible. Hence we will avoid using advanced programming techniques, and prioritise ease-to-read code over short, sophisticated of code.
+
+Neuroscience experiments about objects often follow similar protocols. They are usually designed as several individual Sessions, e.g. one Session in an open field, another Session where an object is introduced and a final Session where the object is moved. In each session, spiking data, subject position data and object position (if an object is present) data is saved. The data structure in this package reflects this experimental paradigm.
+
+In `core.py` we define a `SessionGroup` object and a `SingleSession` class. The `SessionGroup` represents a series of `SingleSession` which would make up one protocol. A `SingleSession` object contains the following data:
+  - name: what the session is called (e.g. "of1" or "obj1")
+  - spikes: the spike train data, stored as a Pynapple TsGroup (in seconds)
+  - Px: The subject x-position, stored as Pynapple Ts (Time Series, in cm)
+  - Py: the subject y-position, stored as Pynapple Ts (Time Series, in cm)
+  - object_position: A 2D array or a Time Series, representing the object position (in cm)
+  - object_index: An integer representing which object is present, for experiments with several objects.
+
+A `SessionGroup` is the main object the user interacts with. It is a dictionary of `SingleSession`s. 
+
+All scores are implemented as methods of the `SessionGroup`. Each score, e.g. the Object Responsiveness Index (ori) score, has a, e.g. `compute_ori` method and a `plot_ori` method. The class methods have a simple structure: they check if they have the appropriate sessions to compute the score, then grab all data needed to compute the score from the `SessionGroup` object, then call a function from either `scores.py` or `plot.py`. We name the functions in `score.py` and `plot.py` as the private versions of the public methods e.g. `_compute_ori` and `_plot_ori`. After the score has been computed, this is saved as a property of the `SessionGroup` class.
+
+The private functions in `scores.py` and `plot.py` contain no reference to the `SessionGroup` or `SingleSession` classes. The score functions return two things: a dictionary of the scores for each cluster, and additional information that the user and the plot function may find helpful. The plot functions return a `matplotlib` Figure.
