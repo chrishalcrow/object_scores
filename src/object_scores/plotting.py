@@ -30,47 +30,40 @@ def plot_rate_map(session, cluster_id, sigma=2.5, minmax=None, plot_object=False
     return fig
 
 
-def _plot_ori(spikes, Px, Py, object_position, ori_score, On, An, mask_cm, fig, axs, session_name, sigma=1):
-
-    ax = axs[0]
+def _plot_ori(spikes, Px, Py, object_position, ori_score, On, An, mask_cm, fig, ax1, ax2, session_name, sigma=1):
 
     tc = compute_rate_map(spikes, Px, Py, minmax=(np.nanmin(Px), np.nanmax(Px), np.nanmin(Py), np.nanmax(Py)))
     smooth_tc = gaussian_filter_nan(tc, [sigma,sigma])
 
-    tcax = ax.imshow(smooth_tc, extent=(np.nanmin(Px), np.nanmax(Px), np.nanmin(Py), np.nanmax(Py)), cmap=color_scheme)
+    tcax = ax1.imshow(smooth_tc, extent=(np.nanmin(Px), np.nanmax(Px), np.nanmin(Py), np.nanmax(Py)), cmap=color_scheme)
 
-    ax.set_xlabel("x-Position (cm)")
-    ax.set_ylabel(f"{session_name}\nORI: {ori_score:.2f}", rotation=90)
+    ax1.set_xlabel("x-Position (cm)")
+    ax1.set_ylabel(f"{session_name}\nORI: {ori_score:.2f}", rotation=90)
 
-    ax.set_title("Rate map")
+    ax1.set_title("Rate map")
 
-    ax.scatter(object_position[0], object_position[1], s=50, c='black')
+    ax1.scatter(object_position[0], object_position[1], s=50, c='black')
     from matplotlib.patches import Circle
     center = object_position
     radius = 18
     circle = Circle(center, radius, fill=False, color='black')
-    ax.add_patch(circle)
+    ax1.add_patch(circle)
 
-    fig.colorbar(tcax, ax=ax)
+    fig.colorbar(tcax, ax=ax1)
 
-    ax = axs[1]
-
-    ax.set_xlabel("x-Position (cm)")
-    ax.set_xlim(np.nanmin(Px), np.nanmax(Px))
-    ax.set_ylim(np.nanmin(Py), np.nanmax(Py))
-    ax.set_aspect(1)
-    ax.set_title("Average firing near and away from object")
-    ax.scatter(object_position[0], object_position[1], s=50, c='black')
+    ax2.set_xlabel("x-Position (cm)")
+    ax2.set_xlim(np.nanmin(Px), np.nanmax(Px))
+    ax2.set_ylim(np.nanmin(Py), np.nanmax(Py))
+    ax2.set_aspect(1)
+    ax2.set_title("Average firing near and away from object")
+    ax2.scatter(object_position[0], object_position[1], s=50, c='black')
     from matplotlib.patches import Circle
     center = object_position
     radius = 18
     circle = Circle(center, radius, fill=False, color='black')
-    ax.add_patch(circle)
-    ax.text(object_position[0]-radius/1.5, object_position[1], f'O_n = {On:.2f}')
-    ax.text(20,20, f'A_n = {An:.2f}')
-
-    #return fig
-
+    ax2.add_patch(circle)
+    ax2.text(object_position[0]-radius/1.5, object_position[1], f'O_n = {On:.2f}')
+    ax2.text(20,20, f'A_n = {An:.2f}')
 
 
 def _plot_information_content(spikes, Px, Py, fig, ax, session_name, score, sigma=1):
@@ -87,6 +80,7 @@ def _plot_information_content(spikes, Px, Py, fig, ax, session_name, score, sigm
 
     fig.colorbar(tcax, ax=ax)
 
+
 def _plot_increase(scores_info, of_spikes, of_Px, of_Py, obj_spikes, obj_Px, obj_Py, object_position, cluster_id, mask_cm, sigma):
 
     from matplotlib.patches import Circle
@@ -94,7 +88,6 @@ def _plot_increase(scores_info, of_spikes, of_Px, of_Py, obj_spikes, obj_Px, obj
     from scipy.stats import norm
 
     fig, axes = plt.subplots(2,2, figsize=(10,10))
-
 
     of_tc = compute_rate_map(of_spikes[cluster_id],of_Px, of_Py)
     smooth_of_tc = gaussian_filter_nan(of_tc, [sigma,sigma])

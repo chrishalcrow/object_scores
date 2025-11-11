@@ -11,18 +11,21 @@ class SingleSession:
         
     """
     
-    def __init__(self, spikes: TsGroup, Px: Tsd, Py: Tsd, object_position=None):
+    def __init__(self, spikes: TsGroup, Px: Tsd, Py: Tsd, object_dict=None):
         
         self.spikes = spikes
         self.Px = Px
         self.Py = Py
-        self.object_position=object_position
+        if object_dict is None:
+            self.object_dict = {}
+        else:
+            self.object_dict = object_dict
 
         self.scores = pd.DataFrame(spikes.index, columns=['cluster_id'])
         self.params = {}
 
     def has_object(self):
-        return self.object_position is not None
+        return len(self.object_dict) > 0
     
 
 class SessionGroup:
@@ -37,6 +40,8 @@ class SessionGroup:
         self.scores = pd.DataFrame(spikes.index, columns=['cluster_id'])
         self.scores_info = {}
 
+        self.computed_scores = []
+
     def _repr_html_(self):
 
         html_text = ""
@@ -50,7 +55,7 @@ class SessionGroup:
     
     def get_computable_scores(self):
 
-        objects = [session.object_position is not None for session in self.sessions.values()]
+        objects = [len(session.object_dict) > 0 for session in self.sessions.values()]
 
         computable_scores = []
 
@@ -66,7 +71,9 @@ class SessionGroup:
 
     def compute_ori(self, session_names = None, cluster_ids=None, mask_cm=18):
 
-        self.params['ori'] = {'mask_cm': mask_cm}
+        score_name = 'ori'
+
+        self.params[score_name] = {'mask_cm': mask_cm}
         
         ori_scores = {}
         ori_info = {}
@@ -76,25 +83,29 @@ class SessionGroup:
                 if session_name not in session_names:
                     break
 
-            if session.object_position is not None:
+            for object_name, object_position in session.object_dict.items():
 
                 spikes = session.spikes
                 Px = session.Px
                 Py = session.Py
-                object_position = session.object_position
 
-                ori_scores[f'ori_{session_name}'], ori_info[f'ori_{session_name}'] = _compute_ori(spikes, Px, Py, object_position, cluster_ids, mask_cm)
+                name = f'{score_name}_{session_name}_{object_name}'
+
+                ori_scores[name], ori_info[name] = _compute_ori(spikes, Px, Py, object_position, cluster_ids, mask_cm)
                 
-                if cluster_ids is None:
-                    self.scores[f'ori_{session_name}'] = ori_scores[f'ori_{session_name}'].values()
-                    self.scores_info[f'ori_{session_name}'] = ori_info[f'ori_{session_name}']
+                self.scores[name] = ori_scores[name].values()
+                self.scores_info[name] = ori_info[name]
 
-        return ori_scores
+        self.computed_scores.append(score_name)
+
+        return self.scores
 
     def compute_increase(self, cluster_ids=None, mask_cm=18):
 
-        no_object_session = list(self.sessions.values())[0]
-        object_session = list(self.sessions.values())[1]
+        score_name = "increase"
+
+        no_object_session_name, no_object_session = list(self.sessions.items())[0]
+        object_session_name, object_session = list(self.sessions.items())[1]
 
         if cluster_ids is None:
             cluster_ids = object_session.spikes.index
@@ -106,37 +117,51 @@ class SessionGroup:
         obj_spikes = object_session.spikes
         obj_Px = object_session.Px
         obj_Py = object_session.Py
-        object_position = object_session.object_position
+        object_position = list(object_session.object_dict.values())[0]
         
-        self.params['increase'] = {'mask_cm': mask_cm}
+        self.params[score_name] = {'mask_cm': mask_cm}
 
         increase_scores = {}
         increase_info = {}
-        for cluster_id in cluster_ids:
-            increase_scores[cluster_id], increase_info[cluster_id] =  _compute_increase(of_spikes, of_Px, of_Py, obj_spikes, obj_Px, obj_Py, object_position, cluster_id, mask_cm)
 
-        if cluster_ids is None:
-            self.scores['increase'] = increase_scores.values()
+        for object_name, object_position in object_session.object_dict.items():
 
-        return increase_scores, increase_info
+            name = f'{score_name}_{no_object_session_name}_{object_session_name}_{object_name}'
+
+            self.params[name] = {'mask_cm': mask_cm}
+
+            for cluster_id in cluster_ids:
+                increase_scores[cluster_id], increase_info[cluster_id] =  _compute_increase(of_spikes, of_Px, of_Py, obj_spikes, obj_Px, obj_Py, object_position, cluster_id, mask_cm)
+
+            self.scores[name] = increase_scores.values()
+            self.scores_info[name] = increase_info
+            
+        self.computed_scores.append(score_name)
+
+        return self.scores
     
     def compute_information_content(self, cluster_ids=None, bins=None):
 
+        score_name = "information_content"
+        self.params[score_name] = {'bins': bins}
+
         information_scores = {}
+
         for session_name, session in self.sessions.items():
 
             spikes = session.spikes
             Px = session.Px
             Py = session.Py
 
-            self.params['information_content'] = {'bins': bins}
+            name = f"{score_name}_{session_name}"
 
-            information_scores[f'information_content_{session_name}'] =  _compute_information_content(spikes, Px, Py, cluster_ids, bins=bins)
+            information_scores[name] =  _compute_information_content(spikes, Px, Py, cluster_ids, bins=bins)
 
-            if cluster_ids is None:
-                self.scores[f'information_content_{session_name}'] = information_scores[f'information_content_{session_name}'].values()
+            self.scores[name] = information_scores[name].values()
 
-        return information_scores
+        self.computed_scores.append(score_name)
+
+        return self.scores
 
 
     def plot_increase(self, cluster_id, sigma=2):
@@ -146,7 +171,15 @@ class SessionGroup:
         no_object_session = list(self.sessions.values())[0]
         object_session = list(self.sessions.values())[1]
 
-        scores, scores_info = self.compute_increase([cluster_id])
+        increase_scores = [score_name for score_name in list(self.scores.columns) if 'increase' in score_name]
+        increase_score = increase_scores[0]
+        _, no_object_session_name, object_session_name, object_name = increase_score.split('_')
+
+        name = f'increase_{no_object_session_name}_{object_session_name}_{object_name}'
+        scores_info = self.scores_info[name]
+
+        no_object_session = self.sessions[no_object_session_name]
+        object_session = self.sessions[object_session_name]
 
         of_spikes = no_object_session.spikes
         of_Px = no_object_session.Px
@@ -155,28 +188,47 @@ class SessionGroup:
         obj_spikes = object_session.spikes
         obj_Px = object_session.Px
         obj_Py = object_session.Py
-        object_position = object_session.object_position
+        object_position = list(object_session.object_dict.values())[0]
 
         return  _plot_increase(scores_info, of_spikes, of_Px, of_Py, obj_spikes, obj_Px, obj_Py, object_position, cluster_id, mask_cm, sigma=sigma)
     
     def plot_ori(self, cluster_id, sigma=2):
 
-        scored_sessions = {session_name: session for session_name, session in self.sessions.items() if self.scores.get(f'ori_{session_name}') is not None}
+        n_objects = 0
+        n_sessions = 0
+        for session_name, session in self.sessions.items():
+            if session.has_object():
+                n_sessions += 1
+                n_objects = max(n_objects, len(session.object_dict))
+
         
-        fig, axes = plt.subplots(nrows = len(scored_sessions), ncols=2, figsize=(8, 4*len(scored_sessions)))
+        fig, axes = plt.subplots(nrows = n_sessions, ncols=2*n_objects)
+        import numpy as np
+        print(f"{np.shape(axes)=}")
+        axes_list = axes.flatten()
 
         mask_cm = self.params['ori']['mask_cm']
 
-        for axs, (session_name, session) in zip(axes, scored_sessions.items()):
+        axis_counter = 0
+        
+        for session_name, session in self.sessions.items():
 
-            spikes = session.spikes
-            Px = session.Px
-            Py = session.Py
-            object_position = session.object_position
-            ori_score = self.scores[f'ori_{session_name}'][cluster_id]
-            On, An = self.scores_info[f'ori_{session_name}'][cluster_id]
+            if session.has_object():
 
-            _plot_ori(spikes[cluster_id], Px, Py, object_position, ori_score, On, An, mask_cm, fig, axs, session_name, sigma=sigma)
+                for object_name, object_position in session.object_dict.items():
+
+                    ax1 = axes_list[axis_counter]
+                    ax2 = axes_list[axis_counter + 1]
+                    axis_counter += 2
+
+                    spikes = session.spikes
+                    Px = session.Px
+                    Py = session.Py
+                    object_position = list(session.object_dict.values())[0]
+                    ori_score = self.scores.query(f'cluster_id == {cluster_id}')[f'ori_{session_name}_{object_name}'].values[0]
+                    On, An = self.scores_info[f'ori_{session_name}_{object_name}'][cluster_id]
+
+                    _plot_ori(spikes[cluster_id], Px, Py, object_position, ori_score, On, An, mask_cm, fig, ax1, ax2, session_name, sigma=sigma)
 
         fig.tight_layout()
         
@@ -185,14 +237,16 @@ class SessionGroup:
 
     def plot_information_content(self, cluster_id, sigma=2):
        
-        fig, axes = plt.subplots(nrows = len(self.sessions), figsize=(8, 4*len(self.sessions)))
+        fig, axes = plt.subplots(nrows = len(self.sessions))
 
         for ax, (session_name, session) in zip(axes, self.sessions.items()):
+
+            ax.set_aspect(1)
 
             spikes = session.spikes
             Px = session.Px
             Py = session.Py
-            information_score = self.scores.query(f'cluster_id == {cluster_id}')[f'information_content_{session_name}'][cluster_id]
+            information_score = self.scores.query(f'cluster_id == {cluster_id}')[f'information_content_{session_name}'].values[0]
 
             _plot_information_content(spikes[cluster_id], Px, Py, fig, ax, session_name, information_score, sigma=sigma)
 
